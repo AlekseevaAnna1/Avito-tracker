@@ -1,0 +1,49 @@
+# Python
+"""Создаются автоматически при запуске программ"""
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+"""Файлы сборки и дистрибуции, создаются при установке
+пакетов и сборке проекта"""
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+"""Виртуальные окружения. Воссоздаются командой
+ pip install -r requirements.txt"""
+venv/
+env/
+.venv/
+
+# Базы данных
+*.db
+*.sqlite3
+
+# Файлы IDE и редакторов
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
