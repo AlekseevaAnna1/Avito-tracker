@@ -39,6 +39,7 @@ class AvitoParser:
             print(f"Ошибка при запросе: {e}")
             return None
 
+    # основная функция, принимающая URL
     def parse_search_results(self, search_url, max_pages=3):
         for page in range(1, max_pages + 1):
             # Формируем URL для каждой страницы
@@ -50,12 +51,11 @@ class AvitoParser:
             if html:
                 # Парсим объявления с этой страницы
                 items = self.extract_items(html)
-                # Обрабатываем найденные товары...
-
-            # Случайная задержка МЕЖДУ страницами
+            # Случайная задержка между страницами
             time.sleep(random.uniform(2, 5))
 
     # функция извлечения данных со страницы
+
     def extract_items(self, html):
         soup = BeautifulSoup(html, 'html.parser')
         items = []
@@ -74,29 +74,45 @@ class AvitoParser:
     # функция извлечения данных из одного контейнера
     def extract_item_data(self, container):
         try:
-            # 1. Название и ссылка
+            # 1) Название и ссылка
             title_elem = container.find('a', {'data-marker': 'item-title'})
             title = title_elem.text.strip() if title_elem else None
             link = "https://www.avito.ru" + title_elem['href'] if title_elem else None
 
-            # 2. Цена
-            price_elem = container.find('span', {'data-marker': 'item-price'})
-            price = price_elem.text.strip() if price_elem else None
+            # 2) Цена
+            # Ищем любой элемент с data-marker="item-price" независимо от тега
+            price_container = container.find(attrs={'data-marker': 'item-price'})
+            if price_container:
+                # Поиск meta-тега с itemprop="price"
+                meta_elem = price_container.find('meta', {'itemprop': 'price'})
+                if meta_elem and meta_elem.get('content'):
+                    price = meta_elem['content']
 
-            # 3. Дата публикации
-            date_elem = container.find('div', {'data-marker': 'item-date'})
+            # 3) Дата публикации
+            date_elem = container.find(attrs={'data-marker': 'item-date'})
             date = date_elem.text.strip() if date_elem else None
 
-            # 4. Дополнительные параметры (доставка, примерка)
-            delivery = bool(container.find(text='Доставка'))
-            fitting = bool(container.find(text='Примерка'))
+            # 4) Местоположение товара
+            location_elem = container.find(attrs={'data-marker': 'item-location'})
+            location = location_elem.text.strip() if location_elem else None
+            # 5) Дополнительные параметры (доставка, примерка)
+            extra_elem = container.find('div', {'class': 'iva-item-listMiddleBlock-W7qtU'})
+            if extra_elem and "Доставка" in extra_elem.text:
+                delivery = True
+            else:
+                delivery = False
 
+            if extra_elem and "Можно примерить" in extra_elem.text:
+                fitting = True
+            else:
+                fitting = False
             return {
                 'title': title,
-                'price': price,
+                'price': price + " р.",
                 'link': link,
                 'date': date,
                 'delivery': delivery,
+                'location': location,
                 'fitting': fitting
             }
 
@@ -105,29 +121,15 @@ class AvitoParser:
             return None
 
 
-# Тестируем
 if __name__ == "__main__":
     parser = AvitoParser()
-    #
-    # # Простая тестовая страница (главная Avito)
-    # test_url = "https://www.avito.ru/"
-    #
-    # html = parser.get_page(test_url, delay=10)  # Большая задержка для теста
-    #
-    # if html:
-    #     soup = BeautifulSoup(html, 'html.parser')
-    #     title = soup.find('title')
-    #     print(f"Заголовок страницы: {title.text if title else 'Не найден'}")
-    # else:
-    #     print("Не удалось получить страницу")
-
     # Тестовая поисковая выдача
-    test_search_url = "https://www.avito.ru/sankt-peterburg?cd=1&q=куртка+jnby"
+    test_search_url = "https://www.avito.ru/sankt-peterburg?cd=1&p=1&q=куртка+jnby"
 
     html = parser.get_page(test_search_url)
 
     if html:
         items = parser.extract_items(html)
         print(f"Найдено {len(items)} объявлений")
-        for item in items[:3]:  # Покажем первые 3
+        for item in items[:5]:  # Покажем первые 3
             print(item)
