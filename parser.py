@@ -2,13 +2,53 @@ import requests
 import time
 import random
 from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 
 
 class AvitoParser:
-    def __init__(self):
+    def __init__(self, city, query, price_min=None, price_max=None, delivery=False, fitting=False):
+        self.city = city
+        self.query = query
+        self.price_min = price_min
+        self.price_max = price_max
+        self.delivery = delivery
+        self.fitting = fitting
         self.session = requests.Session()
         self.set_headers()
 
+    # Формирование ссылки на основе запроса
+    def build_search_url(self, page=1):
+        """Строим URL для поиска на основе параметров"""
+        # Базовый URL
+        base_url = f"https://www.avito.ru/{self.city}"
+
+        # Кодируем поисковый запрос для URL
+        encoded_query = quote_plus(self.query)
+
+        # Начинаем формировать параметры
+        params = []
+
+        # Поисковый запрос
+        params.append(f"q={encoded_query}")
+
+        # Цены (если указаны)
+        if self.price_min is not None:
+            params.append(f"pmin={self.price_min}")
+        if self.price_max is not None:
+            params.append(f"pmax={self.price_max}")
+
+        # Дополнительные параметры
+        if self.delivery:
+            params.append("s=104")
+        if self.fitting:
+            params.append("s=103")
+
+        # Номер страницы
+        params.append(f"p={page}")
+
+        # Собираем полный URL
+        search_url = f"{base_url}?{'&'.join(params)}"
+        return search_url
     def set_headers(self):
         """Устанавливаем типичные заголовки Chrome на Windows"""
         self.session.headers = {
@@ -39,11 +79,34 @@ class AvitoParser:
             print(f"Ошибка при запросе: {e}")
             return None
 
-    # основная функция, принимающая URL
-    def parse_search_results(self, search_url, max_pages=3):
+    def check_new_items(self):
+        """Проверяем новые объявления на первой странице"""
+        print("Проверяем новые объявления...")
+        search_url = self.build_search_url(page=1)
+        html = self.get_page(search_url, delay=random.uniform(5, 10))
+
+        if html:
+            new_items = self.extract_items(html)
+            print(f"Найдено {len(new_items)} объявлений на первой странице")
+            return new_items
+        else:
+            print("Не удалось проверить новые объявления")
+            return []
+
+    def initial_full_parse(self, max_pages=3):
+        """Полный парсинг при создании нового поискового запроса"""
+        print("Выполняем первоначальный полный парсинг...")
+        return self.parse_search_results(max_pages)
+
+
+
+    # Парсинг нескольких страниц
+    def parse_search_results(self, max_pages=3):
+        all_items = []
+
         for page in range(1, max_pages + 1):
             # Формируем URL для каждой страницы
-            page_url = f"{search_url}&p={page}"
+            page_url = self.build_search_url(page)
 
             # Делаем запрос со случайной задержкой
             html = self.get_page(page_url, delay=random.uniform(5, 10))
@@ -51,11 +114,14 @@ class AvitoParser:
             if html:
                 # Парсим объявления с этой страницы
                 items = self.extract_items(html)
+                all_items.extend(items)
+                print(f"На странице {page} найдено {len(items)} объявлений")
+            else:
+                print(f"Не удалось получить страницу {page}")
             # Случайная задержка между страницами
             time.sleep(random.uniform(2, 5))
 
-    # функция извлечения данных со страницы
-
+    # Функция извлечения данных со страницы
     def extract_items(self, html):
         soup = BeautifulSoup(html, 'html.parser')
         items = []
@@ -71,7 +137,7 @@ class AvitoParser:
 
         return items
 
-    # функция извлечения данных из одного контейнера
+    # Функция извлечения данных из одного контейнера
     def extract_item_data(self, container):
         try:
             # 1) Название и ссылка
@@ -122,14 +188,35 @@ class AvitoParser:
 
 
 if __name__ == "__main__":
-    parser = AvitoParser()
-    # Тестовая поисковая выдача
-    test_search_url = "https://www.avito.ru/sankt-peterburg?cd=1&p=1&q=куртка+jnby"
+    # parser = AvitoParser()
+    # # Тестовая поисковая выдача
+    # test_search_url = "https://www.avito.ru/sankt-peterburg?cd=1&p=1&q=куртка+jnby"
+    #
+    # html = parser.get_page(test_search_url)
+    #
+    # if html:
+    #     items = parser.extract_items(html)
+    #     print(f"Найдено {len(items)} объявлений")
+    #     for item in items[:5]:  # Покажем первые 3
+    #         print(item)
+    # Создаем парсер с параметрами
+    parser = AvitoParser(
+        city="sankt-peterburg",
+        query="куртка",
+        price_min=1000,
+        price_max=5000,
+        delivery=True,
+        fitting=False
+    )
 
-    html = parser.get_page(test_search_url)
+    # Тестируем построение URL
+    print("Построенный URL:", parser.build_search_url())
 
-    if html:
-        items = parser.extract_items(html)
-        print(f"Найдено {len(items)} объявлений")
-        for item in items[:5]:  # Покажем первые 3
-            print(item)
+    # Проверяем новые объявления
+    new_items = parser.check_new_items()
+
+    print(f"Найдено {len(new_items)} объявлений")
+    for i, item in enumerate(new_items[:3], 1):
+        print(f"\n--- Объявление {i} ---")
+        for key, value in item.items():
+            print(f"{key}: {value}")
