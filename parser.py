@@ -12,7 +12,6 @@ class AvitoParser:
         self.price_min = price_min
         self.price_max = price_max
         self.delivery = delivery
-        self.fitting = fitting
         self.session = requests.Session()
         self.set_headers()
 
@@ -20,16 +19,16 @@ class AvitoParser:
     def build_search_url(self, page=1):
         """Строим URL для поиска на основе параметров"""
         # Базовый URL
-        base_url = f"https://www.avito.ru/{self.city}"
+        base_url = f"https://www.avito.ru/{self.city}/lichnye_veschi"
 
-        # Кодируем поисковый запрос для URL
         encoded_query = quote_plus(self.query)
-
-        # Начинаем формировать параметры
-        params = []
-
-        # Поисковый запрос
-        params.append(f"q={encoded_query}")
+        # Параметр s отвечает за сортировку по дате
+        params = [f"q={encoded_query}", f"s=104"]
+        # # Ценовой фильтр (закодированный)
+        # if self.price_min is not None and self.price_max is not None:
+        #     price_filter = self.encode_price_filter(self.price_min, self.price_max)
+        #     if price_filter:
+        #         params.append(f"f={price_filter}")
 
         # Цены (если указаны)
         if self.price_min is not None:
@@ -37,28 +36,25 @@ class AvitoParser:
         if self.price_max is not None:
             params.append(f"pmax={self.price_max}")
 
-        # Дополнительные параметры
         if self.delivery:
-            params.append("s=104")
-        if self.fitting:
-            params.append("s=103")
+            params.append("d=1")
 
         # Номер страницы
-        params.append(f"p={page}")
+        if page > 1:
+            params.append(f"p={page}")
 
-        # Собираем полный URL
         search_url = f"{base_url}?{'&'.join(params)}"
         return search_url
     def set_headers(self):
         """Устанавливаем типичные заголовки Chrome на Windows"""
-        self.session.headers = {
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive', # будут отправлены ещё запросы
-            'Upgrade-Insecure-Requests': '1', # перевод на HTTPS
-        }
+            'Upgrade-Insecure-Requests': '1' # перевод на HTTPS
+        })
 
     def get_page(self, url, delay=5):
         """Получаем страницу с со случайной задержкой"""
@@ -79,8 +75,9 @@ class AvitoParser:
             print(f"Ошибка при запросе: {e}")
             return None
 
+    """Проверяем новые объявления на первой странице"""
+
     def check_new_items(self):
-        """Проверяем новые объявления на первой странице"""
         print("Проверяем новые объявления...")
         search_url = self.build_search_url(page=1)
         html = self.get_page(search_url, delay=random.uniform(5, 10))
@@ -93,12 +90,11 @@ class AvitoParser:
             print("Не удалось проверить новые объявления")
             return []
 
+    """Полный парсинг при создании нового поискового запроса"""
+
     def initial_full_parse(self, max_pages=3):
-        """Полный парсинг при создании нового поискового запроса"""
         print("Выполняем первоначальный полный парсинг...")
         return self.parse_search_results(max_pages)
-
-
 
     # Парсинг нескольких страниц
     def parse_search_results(self, max_pages=3):
@@ -131,14 +127,13 @@ class AvitoParser:
 
         for container in item_containers:
             # Извлекаем данные из каждого контейнера
-            item_data = self.extract_item_data(container)
+            item_data = self.parse_item(container)
             if item_data:
                 items.append(item_data)
-
         return items
 
     # Функция извлечения данных из одного контейнера
-    def extract_item_data(self, container):
+    def parse_item(self, container):
         try:
             # 1) Название и ссылка
             title_elem = container.find('a', {'data-marker': 'item-title'})
@@ -154,6 +149,12 @@ class AvitoParser:
                 if meta_elem and meta_elem.get('content'):
                     price = meta_elem['content']
 
+            # Первое фото: ищем тег <img itemprop="image">
+            image_container = container.find('img', {'itemprop': 'image'})
+            image_url = image_container.get('src') if image_container else None
+            # Если фото не найдено, можно использовать заглушку
+            if not image_url:
+                image_url = "No image"
             # 3) Дата публикации
             date_elem = container.find(attrs={'data-marker': 'item-date'})
             date = date_elem.text.strip() if date_elem else None
@@ -175,6 +176,7 @@ class AvitoParser:
             return {
                 'title': title,
                 'price': price + " р.",
+                'image_url': image_url,
                 'link': link,
                 'date': date,
                 'delivery': delivery,
@@ -188,25 +190,13 @@ class AvitoParser:
 
 
 if __name__ == "__main__":
-    # parser = AvitoParser()
-    # # Тестовая поисковая выдача
-    # test_search_url = "https://www.avito.ru/sankt-peterburg?cd=1&p=1&q=куртка+jnby"
-    #
-    # html = parser.get_page(test_search_url)
-    #
-    # if html:
-    #     items = parser.extract_items(html)
-    #     print(f"Найдено {len(items)} объявлений")
-    #     for item in items[:5]:  # Покажем первые 3
-    #         print(item)
-    # Создаем парсер с параметрами
+
     parser = AvitoParser(
         city="sankt-peterburg",
         query="куртка",
         price_min=1000,
         price_max=5000,
         delivery=True,
-        fitting=False
     )
 
     # Тестируем построение URL
