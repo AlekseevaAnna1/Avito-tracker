@@ -102,7 +102,8 @@ class Database:
         try:
             cursor.execute('''
                 INSERT OR IGNORE INTO items 
-                (search_id, title, price, link, date, location, delivery, fitting, image_url)
+                (search_id, title, price, link, date, location, delivery, 
+                fitting, image_url)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 search_id,
@@ -123,21 +124,34 @@ class Database:
             return is_new
 
         except sqlite3.IntegrityError:
-            # Ограничение UNIQUE (поле link)
+            # Ограничение UNIQUE (уникальное поле link)
             return False
         finally:
             conn.close()
 
-    def item_exists(self, link):
-        """Проверка существования объявления с данной ссылкой в бд"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def process_items(self, items, search_id):
+        """
+        Обрабатывает список объявлений: сохраняет только новые
+        Возвращает список новых объявлений
+        """
+        new_items_list = []
 
-        cursor.execute('SELECT id FROM items WHERE link = ?', (link,))
-        exists = cursor.fetchone() is not None
+        for item in items:
+            if self.add_item(item, search_id):
+                new_items_list.append(item)
 
-        conn.close()
-        return exists
+        return new_items_list
+
+    # def item_exists(self, link):
+    #     """Проверка существования объявления с данной ссылкой в бд"""
+    #     conn = sqlite3.connect(self.db_path)
+    #     cursor = conn.cursor()
+    #
+    #     cursor.execute('SELECT id FROM items WHERE link = ?', (link,))
+    #     exists = cursor.fetchone() is not None
+    #
+    #     conn.close()
+    #     return exists
 
     def get_search_by_id(self, search_id):
         """Получение запроса по id"""

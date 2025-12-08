@@ -22,8 +22,8 @@ class ImprovedAvitoParser:
         self.driver = None
 
     # Возвращает driver/None
-    def _setup_undetected_driver(self, headless=False):
-        # обход reCAPTCHA (эмуляция реального браузера)
+    def _setup_undetected_driver(self, headless=True):
+        # Обход reCAPTCHA (эмуляция реального браузера)
         options = uc.ChromeOptions()
         if headless:
             options.add_argument('--headless=new')  # Без граф.интерфейса
@@ -45,7 +45,7 @@ class ImprovedAvitoParser:
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
             'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
-        # Создаем пользовательский профиль
+        # Создание пользовательского профиля
         user_data_dir = os.path.join(os.getcwd(), "avito_profile")
         if not os.path.exists(user_data_dir):
             os.makedirs(user_data_dir)
@@ -53,7 +53,7 @@ class ImprovedAvitoParser:
         options.add_argument(f"--user-data-dir={user_data_dir}")
 
         try:
-            # Используем undetected-chromedriver
+            # Использование undetected-chromedriver
             driver = uc.Chrome(
                 options=options,
                 driver_executable_path=ChromeDriverManager().install()
@@ -93,7 +93,7 @@ class ImprovedAvitoParser:
             print(f"Ошибка настройки драйвера: {e}")
             return None
 
-    # Возвращает True/False
+    # Возвращает True/False (занимает максимум 30 с.)
     def _wait_for_captcha(self, timeout=30):
         # Ожидание и обработка капчи
         # print("Проверка наличия hCaptcha")
@@ -126,7 +126,7 @@ class ImprovedAvitoParser:
                 time.sleep(2)
                 return False
 
-    # Ничего не возвращает
+    # Ничего не возвращает (занимает максимум 22 с.)
     def _advanced_human_behavior(self):
         # Имитация пользователя для обхода Qrator
         driver = self.driver
@@ -193,7 +193,7 @@ class ImprovedAvitoParser:
         return search_url
 
     # Возвращает список найденных объектов
-    def main_parse_func(self, max_pages=1, headless=False):
+    def main_parse_func(self, max_pages=1, headless=True):
         print("Запуск парсера")
         print("=" * 50)
 
@@ -203,6 +203,7 @@ class ImprovedAvitoParser:
             return []
         all_items = []
 
+        # Занимает максимум 120 с.
         try:
             for page in range(1, max_pages + 1):
                 print(f"Страница {page}/{max_pages}")
@@ -252,6 +253,7 @@ class ImprovedAvitoParser:
         print(f"Найдено: {len(all_items)} объявлений")
         return all_items
 
+    # Занимает максимум 15 с.
     def _parse_page(self):
         # Парсинг одной страницы
         try:
@@ -300,6 +302,7 @@ class ImprovedAvitoParser:
             print(f"Ошибка аварийного парсинга: {e}")
             return []
 
+    # Возвращает словарь
     def _extract_data_from_container(self, container):
         # Извлечение данных из  объявления
         try:
@@ -403,18 +406,16 @@ class ImprovedAvitoParser:
                         continue
             except Exception as e:
                 print(f"Ошибка извлечения доп. параметров: {e}")
-
             return {
                 'title': title,
                 'price': price,
                 'link': link,
-                'location': location,
                 'date': date,
-                'image_url': image_url,
+                'location': location,
                 'delivery': delivery,
-                'fitting': fitting
+                'fitting': fitting,
+                'image_url': image_url,
             }
-
         except Exception as e:
             print(f"Ошибка извлечения данных: {e}")
             return None
@@ -432,12 +433,17 @@ if __name__ == "__main__":
         delivery=True,
     )
     print("Построенный URL:", parser._build_search_url())
+    start = time.time()
 
     items = parser.main_parse_func(max_pages=1, headless=False)
+
+    end = time.time()
 
     if items:
         for i, item in enumerate(items[:3], 1):
             print(f"\n--- Объявление {i} ---")
             for key, value in item.items():
                 print(f"{key}: {value}")
+    print(f"На парсинг одной страницы ушло {end - start}")  # Обычно 2-3 минуты
+
 
