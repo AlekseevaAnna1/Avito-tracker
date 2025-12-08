@@ -24,7 +24,6 @@ class Database:
                 price_max INTEGER,
                 delivery BOOLEAN DEFAULT 0,
                 fitting BOOLEAN DEFAULT 0,  # Будет реализовано в будущем
-                interval_minutes INTEGER DEFAULT 30,
                 is_active BOOLEAN DEFAULT 1,
                 created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_check TIMESTAMP
@@ -45,16 +44,25 @@ class Database:
                 fitting BOOLEAN DEFAULT 0,
                 found_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_new BOOLEAN DEFAULT 1,
-                FOREIGN KEY (search_id) REFERENCES searches (id)
+                FOREIGN KEY (search_id) REFERENCES searches (id) ON DELETE 
+                CASCADE
             )
         ''')
-
         conn.commit()
         conn.close()
 
-    # Добавление нового поискового запроса
-    def add_search(self, name, query, city, price_min=None, price_max=None,
-                   delivery=False, fitting=False, interval_minutes=30):
+
+
+    def add_search(self, query, city, price_min=None, price_max=None,
+                   delivery=False, fitting=False, name=None):
+        """Добавление нового поискового запроса, возвращает уникальный id
+        запроса"""
+        # Генерация названия на основе запроса
+        if name is None:
+            first_query_words = ' '.join(query.split()[:3])
+            name = first_query_words if len(first_query_words) < 25 else \
+                first_query_words[:-3] + '...'
+
         # Добавление нового поискового запроса
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -62,17 +70,17 @@ class Database:
         # Вставка данных в таблицу searches
         cursor.execute('''
             INSERT INTO searches 
-            (name, query, city, price_min, price_max, delivery, fitting, interval_minutes, last_check)
+            (name, query, city, price_min, price_max, delivery, fitting,  last_check)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (name, query, city, price_min, price_max, delivery, fitting, interval_minutes, datetime.now()))
+        ''', (name, query, city, price_min, price_max, delivery, fitting))
 
         search_id = cursor.lastrowid  # Получение id только что добав. запроса
         conn.commit()
         conn.close()
         return search_id
 
-    # Получение всех активных поисковых запросов
     def get_active_searches(self):
+        """Получение всех активных поисковых запросов"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -85,9 +93,9 @@ class Database:
 
         return searches
 
-    # Добавление найденного объявления (нового)
-    def add_item(self, search_id, title, price, link, date=None, location=None,
-                 delivery=False, fitting=False, image_url=None):
+    def add_item(self, item, search_id):
+        """Добавление найденного объявления (нового)
+        Возвращает true/false - новое ли объявление"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -97,8 +105,16 @@ class Database:
                 (search_id, title, price, link, date, location, delivery, fitting, image_url)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-            search_id, title, price, link, date, location, delivery, fitting,
-            image_url))
+                search_id,
+                item.get('title'),
+                item.get('price'),
+                item.get('link'),
+                item.get('date'),
+                item.get('location'),
+                item.get('delivery', False),
+                item.get('fitting', False),
+                item.get('image_url')
+            ))
 
             # Проверяем, была ли вставлена новая запись
             is_new = cursor.rowcount > 0
@@ -112,8 +128,8 @@ class Database:
         finally:
             conn.close()
 
-    # Проверка существования объявления с данной ссылкой
     def item_exists(self, link):
+        """Проверка существования объявления с данной ссылкой в бд"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -123,8 +139,8 @@ class Database:
         conn.close()
         return exists
 
-    # Получение запроса по id
     def get_search_by_id(self, search_id):
+        """Получение запроса по id"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -133,6 +149,113 @@ class Database:
 
         conn.close()
         return search
+
+    def update_last_check(self, search_id):
+        """Время последней проверки (устанавливается текущее) конкретного
+        запроса
+        (по id)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE searches
+            SET last_check = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (search_id,))
+        conn.commit()
+        conn.close()
+
+    def toggle_search_active(self, search_id, is_active):
+        """Активация/деактивация запроса"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE searches 
+            SET is_active = ?
+            WHERE id = ?
+        ''', (is_active, search_id))
+
+        conn.commit()
+        conn.close()
+
+    def get_search_history(self, search_id, limit=30):
+        """Просмотр истории объявлений по конкретному запросу"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT title, price, link, date, location, delivery, fitting, 
+            found_date
+            FROM items
+            WHERE search_id = ?
+            ORDER BY found_date DESC
+            LIMIT ?
+        ''', (search_id, limit))
+        items = cursor.fetchall()
+        conn.close()
+
+        # Преобразование в список словарей
+        history=[]
+        for item in items:
+            history.append({
+                'title': item[0],
+                'price': item[1],
+                'link': item[2],
+                'date': item[3],
+                'location': item[4],
+                'delivery': bool(item[5]),
+                'fitting': bool(item[6]),
+                'found_date': item[7]
+            })
+        return history
+
+    def get_search_stats(self, search_id):
+        """
+        Получение статистики для поискового запроса:
+        - кол-во найденных объявлений
+        - кол-во новых объялений
+        - дата последней проверки
+        """
+        # Общее количество объявлений
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM items WHERE search_id = ?',
+                       (search_id,))
+        total_count = cursor.fetchone()[0]
+
+        # Количество новых объявлений
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM items WHERE search_id = ? '
+                       'AND is_new = 1',
+                       (search_id,))
+        new_count = cursor.fetchone()[0]
+
+        # Дата последней проверки
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT last_check FROM searches WHERE id = ? ',
+                       (search_id,))
+        last_check = cursor.fetchone()[0]
+
+        conn.close()
+        return {
+            'total_items': total_count,
+            'new_items': new_count,
+            'last_check': last_check
+        }
+
+    def mark_item_as_seen(self, item_id):
+        """Помечает объявление как просмотренное (не новое)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE items
+            SET is_new = 0
+            WHERE id = ?
+            ''', (item_id,))
+        conn.commit()
+        conn.close()
 
 # Тестирование
 if __name__ == "__main__":
@@ -152,4 +275,3 @@ if __name__ == "__main__":
     # Тест получения активных запросов
     searches = db.get_active_searches()
     print(f"Активные запросы: {searches}")
-
