@@ -5,9 +5,17 @@
 from plyer import notification
 import logging
 
-# Настройка логирования для уведомлений
+logging.basicConfig(
+    filename='notifications.log',
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%H:%M:%S',
+    encoding='utf-8'
+)
+# Создание логгера с именем модуля
 logger = logging.getLogger(__name__)
 
+# === Функции уведомлений (с логированием) ===
 
 def notify_new_items(search_name, new_items):
     """
@@ -17,6 +25,7 @@ def notify_new_items(search_name, new_items):
         new_items (list): Список новых объявлений (словарей)
     """
     if not new_items:
+        logger.debug(f"Нет новых объявлений для '{search_name}'")
         return False
     try:
         if len(new_items) == 1:
@@ -25,12 +34,12 @@ def notify_new_items(search_name, new_items):
         else:
             _show_multiple_notification(search_name, new_items)
 
-        logger.info(f"Показано уведомление для запроса '{search_name}' ({len(new_items)} новых объявлений)")
+        logger.info(f"Уведомление: '{search_name}' - {len(new_items)} новых")
         return True
 
     except Exception as e:
-        logger.error(f"Ошибка при показе уведомления: {e}", exc_info=True)
-        return False
+        logger.error(f"Ошибка уведомления для '{search_name}': {e}")
+    return False
 
 
 def _show_single_notification(search_name, item):
