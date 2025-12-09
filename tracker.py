@@ -1,9 +1,6 @@
 from improvedParser import ImprovedAvitoParser
 from database import Database
-from datetime import datetime
-import time
-import random
-
+import notification as my_notifications
 class AvitoTracker:
     def __init__(self, check_interval_minutes=15):
         self.db = Database()
@@ -61,29 +58,37 @@ class AvitoTracker:
             return []
 
         # Создание парсера для запроса
-        parser = ImprovedAvitoParser(
-            city=search['city'],
-            query=search['query'],
-            price_min=search['price_min'],
-            price_max=search['price_max'],
-            delivery=search['delivery']
-        )
+        try:
+            search_name = search['name']
+            parser = ImprovedAvitoParser(
+                city=search['city'],
+                query=search['query'],
+                price_min=search['price_min'],
+                price_max=search['price_max'],
+                delivery=search['delivery']
+            )
 
-        # Парсинг 1-ой страницы (недавние объявления)
-        items = parser.main_parse_func()
-        new_items = self.db.process_items(items, search_id)
+            # Парсинг 1-ой страницы (недавние объявления)
+            items = parser.main_parse_func()
+            new_items = self.db.process_items(items, search_id)
 
-        # Обновление времени проверки
-        self.db.update_last_check(search_id)
+            # Обновление времени проверки
+            self.db.update_last_check(search_id)
 
-        print(f"Для '"
-              f"{search['name']}' найдено {len(new_items)} новых объявлений")
+            print(f"Для '"
+                  f"{search_name}' найдено {len(new_items)} новых объявлений")
 
-        # # Показ уведомлений о новых объявлениях
-        # if new_items:
-        #     self._notify_new_items(name, new_items)
+            # # Показ уведомлений о новых объявлениях
+            if new_items:
+                my_notifications.notify_new_items(search_name, new_items)
+            return new_items
 
-        return new_items
+        except Exception as e:
+            error_msg = f"Ошибка при проверке запроса '{search_name}': {str(e)}"
+            print(f"{error_msg}")
+            my_notifications.notify_error(error_msg, search_name)
+            return []
+
 
     # Проверка всех активных запросов - возвращ. новые объявления по всем
     # запросам
