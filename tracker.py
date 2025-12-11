@@ -1,15 +1,17 @@
 from improvedParser import ImprovedAvitoParser
 from database import Database
 import notification as my_notifications
+
+
 class AvitoTracker:
     def __init__(self, check_interval_minutes=15):
         self.db = Database()
         self.check_interval = check_interval_minutes
         self.is_running = False
 
-
     def create_search(self, query, city, price_min=None,
-                      price_max=None, delivery=False, fitting=False, name=None):
+                      price_max=None, delivery=False, fitting=False,
+                      name=None):
         '''
         Добавление запроса и первоначальный парсинг.
         Сохраняет найденные объявления в бд (с id запроса).
@@ -36,7 +38,7 @@ class AvitoTracker:
             delivery=delivery,
         )
         # Полный парсинг страницы для начальной базы
-        items = parser.main_parse_func()
+        items = parser.main_parse_func(headless=True)
         new_items = self.db.process_items(items, search_id)
 
         # Обновление времени проверки
@@ -44,8 +46,6 @@ class AvitoTracker:
 
         print(f"Найдено {len(items)} объявлений, новых: {len(new_items)}")
         return search_id, len(new_items)
-
-
 
     def check_search(self, search_id):
         '''
@@ -57,19 +57,23 @@ class AvitoTracker:
             print(f"Поисковый запрос с ID {search_id} не найден")
             return []
 
+        # Распаковка кортежа (обращаемся по индексам)
+        # Порядок колонок в таблице searches:
+        # 0: id, 1: name, 2: query, 3: city, 4: price_min, 5: price_max,
+        # 6: delivery, 7: fitting, 8: is_active, 9: created_date, 10: last_check
+        search_name = search[1]
         # Создание парсера для запроса
         try:
-            search_name = search['name']
             parser = ImprovedAvitoParser(
-                city=search['city'],
-                query=search['query'],
-                price_min=search['price_min'],
-                price_max=search['price_max'],
-                delivery=search['delivery']
+                city=search[3],
+                query=search[2],
+                price_min=search[4],
+                price_max=search[5],
+                delivery=bool(search[6])
             )
 
             # Парсинг 1-ой страницы (недавние объявления)
-            items = parser.main_parse_func()
+            items = parser.main_parse_func(headless=True)
             new_items = self.db.process_items(items, search_id)
 
             # Обновление времени проверки
@@ -86,9 +90,8 @@ class AvitoTracker:
         except Exception as e:
             error_msg = f"Ошибка при проверке запроса '{search_name}': {str(e)}"
             print(f"{error_msg}")
-            my_notifications.notify_error(error_msg, search_name)
+            # notification.notify_error(error_msg, search_name)
             return []
-
 
     # Проверка всех активных запросов - возвращ. новые объявления по всем
     # запросам
@@ -103,3 +106,36 @@ class AvitoTracker:
             all_new_items.extend(new_items)
 
         return all_new_items
+
+
+if __name__ == "__main__":
+    tracker = AvitoTracker()
+    # search_id1, _ = tracker.create_search(
+    #     query="Куртка jnby женская",
+    #     city="sankt-peterburg", price_max=10000,
+    #     delivery=True
+    # )
+    # search_id2, _ = tracker.create_search(
+    #     query="Джинсы levis женские",
+    #     city="sankt-peterburg",
+    #     price_min=1000,
+    #     price_max=7000
+    # )
+    #
+    # search_id3, _ = tracker.create_search(
+    #     query="Сапоги кожаные черные",
+    #     city="sankt-peterburg", price_min=100, price_max=5000,
+    # )
+
+    print("\n--- Все активные запросы из БД ---")
+    active_searches = tracker.db.get_active_searches()
+
+    for search in active_searches:
+        id = search[0]
+        name = search[1]
+        print(f"ID запроса: {id} | название: {name}")
+
+    print("\n--- Проверка всех активных запросов ---")
+    all_new_items = tracker.check_all_active_searches()
+    # new_items = tracker.check_search(search_id5)
+    print(f"Всего новых объявлений по всем запросам: {len(all_new_items)}")

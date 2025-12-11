@@ -1,3 +1,7 @@
+"""
+Модуль для работы с html-структурой сайта Avito.
+Использует selenium.webdriver для имитации реального браузера.
+"""
 import time
 import random
 import os
@@ -6,7 +10,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium.webdriver.common.action_chains import ActionChains  # Цепочки действий
+from selenium.webdriver.common.action_chains import \
+    ActionChains  # Цепочки действий
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -22,45 +27,103 @@ class ImprovedAvitoParser:
         self.driver = None
 
     # Возвращает driver/None
+    # def _setup_undetected_driver(self, headless=True):
+    #     # Обход reCAPTCHA (эмуляция реального браузера)
+    #     options = uc.ChromeOptions()
+    #     if headless:
+    #         options.add_argument('--headless=new')  # Без граф.интерфейса
+    #         options.add_argument('--window-size=1920,1080')
+    #         options.add_argument('--disable-gpu')  # Важно для headless
+    #     else:
+    #         options.add_argument('--start-maximized')
+    #     options.add_argument('--no-sandbox')
+    #     options.add_argument('--disable-dev-shm-usage')
+    #     # Скрываются признаки автоматизации
+    #     options.add_argument('--disable-blink-features=AutomationControlled')
+    #     options.add_argument('--disable-features=VizDisplayCompositor')
+    #     options.add_argument('--disable-background-timer-throttling')
+    #     options.add_argument('--disable-backgrounding-occluded-windows')
+    #     options.add_argument('--disable-renderer-backgrounding')
+    #
+    #     # Реалистичный User-Agent
+    #     options.add_argument(
+    #         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    #         'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    #
+    #     # Создание пользовательского профиля
+    #     user_data_dir = os.path.join(os.getcwd(), "avito_profile")
+    #     if not os.path.exists(user_data_dir):
+    #         os.makedirs(user_data_dir)
+    #
+    #     options.add_argument(f"--user-data-dir={user_data_dir}")
+    #
+    #     try:
+    #         # Использование undetected-chromedriver
+    #         driver = uc.Chrome(
+    #             options=options,
+    #             driver_executable_path=ChromeDriverManager().install()
+    #         )
+    #
+    #         # Доп. скрипты для обхода защиты (выполняется до кода
+    #         # сайта)
+    #         driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+    #             'source': '''
+    #                 // Обход hCaptcha детекции
+    #                 Object.defineProperty(navigator, 'webdriver', {
+    #                     get: () => undefined
+    #                 });
+    #
+    #                 // Обход QRATOR fingerprinting (кол-во плагинов)
+    #                 Object.defineProperty(navigator, 'plugins', {
+    #                     get: () => [1, 2, 3, 4, 5]
+    #                 });
+    #
+    #                 Object.defineProperty(navigator, 'languages', {
+    #                     get: () => ['ru-RU', 'ru', 'en-US', 'en']
+    #                 });
+    #
+    #                 // Скрытие Chrome Automation
+    #                 window.chrome = {
+    #                     runtime: {},
+    #                     loadTimes: function() {},
+    #                     csi: function() {},
+    #                     app: {}
+    #                 };
+    #             '''
+    #         })
+    #
+    #         return driver
+    #
+    #     except Exception as e:
+    #         print(f"Ошибка настройки драйвера: {e}")
+    #         return None
+
     def _setup_undetected_driver(self, headless=True):
-        # Обход reCAPTCHA (эмуляция реального браузера)
-        options = uc.ChromeOptions()
-        if headless:
-            options.add_argument('--headless=new')  # Без граф.интерфейса
-            options.add_argument('--window-size=1920,1080')
-            options.add_argument('--disable-gpu')  # Важно для headless
-        else:
-            options.add_argument('--start-maximized')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        # Скрываются признаки автоматизации
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--disable-features=VizDisplayCompositor')
-        options.add_argument('--disable-background-timer-throttling')
-        options.add_argument('--disable-backgrounding-occluded-windows')
-        options.add_argument('--disable-renderer-backgrounding')
-
-        # Реалистичный User-Agent
-        options.add_argument(
-            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
-        # Создание пользовательского профиля
-        user_data_dir = os.path.join(os.getcwd(), "avito_profile")
-        if not os.path.exists(user_data_dir):
-            os.makedirs(user_data_dir)
-
-        options.add_argument(f"--user-data-dir={user_data_dir}")
-
+        """Минималистичная настройка драйвера"""
         try:
-            # Использование undetected-chromedriver
-            driver = uc.Chrome(
-                options=options,
-                driver_executable_path=ChromeDriverManager().install()
-            )
+            options = uc.ChromeOptions()
 
-            # Доп. скрипты для обхода защиты (выполняется до кода
-            # сайта)
+            if headless:
+                options.add_argument('--headless=new')
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--disable-gpu')  # Важно для headless
+            # Только самые необходимые аргументы
+            else:
+                options.add_argument('--start-maximized')
+
+            options.add_argument(
+                '--disable-blink-features=AutomationControlled')
+            options.add_argument('--no-sandbox')
+            # options.add_argument(
+            #     '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            #     'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+            driver = uc.Chrome(options=options)
+
+            # Базовая маскировка
+            # driver.execute_script(
+            #     "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
             driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                 'source': '''
                     // Обход hCaptcha детекции
@@ -86,45 +149,99 @@ class ImprovedAvitoParser:
                     };
                 '''
             })
-
             return driver
-
         except Exception as e:
             print(f"Ошибка настройки драйвера: {e}")
             return None
 
     # Возвращает True/False (занимает максимум 30 с.)
-    def _wait_for_captcha(self, timeout=30):
-        # Ожидание и обработка капчи
-        # print("Проверка наличия hCaptcha")
+    def _wait_for_captcha(self, timeout=30, headless=True):
+        """
+        Ожидание и обработка капчи.
+        Args:
+            timeout: Максимальное время ожидания в секундах.
+            headless: Флаг, работает ли браузер в режиме без графического интерфейса.
+        Returns:
+            True - если капчи нет или она решена. False - если обнаружена неустранимая блокировка.
+        """
+
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                # Проверка наличия hCaptcha iframe
-                captcha_iframes = self.driver.find_elements(By.CSS_SELECTOR,
-                                                            'iframe[src*="hcaptcha.com"]')
-                if captcha_iframes:
-                    print("Обнаружена hCaptcha, требуется ручное решение...")
-                    print("Решите капчу в браузере и нажмите Enter чтобы продолжить")
-                    input()
-                    return True
-                # Проверка наличия блокировки
-                page_text = self.driver.page_source.lower()
-                if any(text in page_text for text in
-                       ['доступ ограничен', 'bot detected', 'automation']):
-                    print("Обнаружена блокировка!")
-                    return False
+                # with open("avito_debug.html", "w", encoding="utf-8") as f:
+                #     f.write(self.driver.page_source)
+                # print("HTML сохранен как avito_debug.html")
+
+                # Проверка наличия hCaptcha и других распространенных капч
+                captcha_found = False
+                captcha_selectors = [
+                    'iframe[src*="hcaptcha.com"]',
+                    'iframe[src*="google.com/recaptcha"]',
+                    'div[class*="captcha-container"]',
+                    'div[data-testid="captcha"]'
+                ]
+
+                for selector in captcha_selectors:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR,
+                                                             selector)
+                        # Проверяем, что элемент не только есть, но и виден на странице
+                        for elem in elements:
+                            if elem.is_displayed():
+                                print(
+                                    f"Обнаружена ВИДИМАЯ капча (селектор: {selector}).")
+                                captcha_found = True
+                                break
+                        if captcha_found:
+                            break
+                    except Exception:
+                        pass
+
+                if captcha_found:
+                    if headless:
+                        # В headless-режиме ручное решение невозможно
+                        print(
+                            "ОБНАРУЖЕНА КАПЧА В HEADLESS-РЕЖИМЕ. Парсинг невозможен.")
+                        # Сохранение скриншота для отладки
+                        self.driver.save_screenshot("captcha_blocked.png")
+                        return False  # Завершение работы с ошибкой
+                    else:
+                        # В видимом режиме нужно решить капчу вручную
+                        print("Требуется ручное решение капчи в браузере...")
+                        input("Решите капчу и нажмите Enter для продолжения: ")
+                        time.sleep(3)
+                        continue
+
+                # Проверка наличия явной блокировки
+                block_indicators = [
+                    "Доступ ограничен",
+                    "Подозрительная активность",
+                    "Системы безопасности",
+                    "Please confirm you are human"
+                ]
+                page_visible_text = self.driver.find_element(By.TAG_NAME,
+                                                             "body").text
+                for indicator in block_indicators:
+                    if indicator in page_visible_text:
+                        print(f"Обнаружена блокировка: '{indicator}'")
+                        return False  # Неустранимая блокировка
+
                 # Если загрузились нормальные объявления - выходим
-                items = self.driver.find_elements(By.CSS_SELECTOR,
-                                                  '[data-marker="item"]')
-                if items:
-                    # print("Капча не обнаружена, страница загружена")
-                    return True
+                try:
+                    items = self.driver.find_elements(By.CSS_SELECTOR,
+                                                      '[data-marker="item"]')
+                    if items:
+                        # print("Капча не обнаружена, страница загружена")
+                        return True
+                except Exception:
+                    pass
+
+                    # Если ничего не найдено, ждём и проверяем снова
                 time.sleep(2)
-            except Exception as e:
-                print(f"Ошибка при проверке капчи: {e}")
-                time.sleep(2)
-                return False
+            except Exception:
+                pass
+        print("Таймаут: не удалось дождаться загрузки объявлений.")
+        return False
 
     # Ничего не возвращает (занимает максимум 22 с.)
     def _advanced_human_behavior(self):
@@ -221,7 +338,7 @@ class ImprovedAvitoParser:
                 wait_time = random.uniform(8, 15)
                 time.sleep(wait_time)
 
-                if not self._wait_for_captcha():
+                if not self._wait_for_captcha(headless=headless):
                     print("Не удалось обойти защиту")
                     break
 
@@ -291,7 +408,7 @@ class ImprovedAvitoParser:
             # Сохраняем HTML для отладки
             with open("avito_debug.html", "w", encoding="utf-8") as f:
                 f.write(source)
-            print("💾 HTML сохранен как avito_debug.html")
+            print("HTML сохранен как avito_debug.html")
 
             # Простой поиск по ключевым словам в исходном коде
             if self.query.lower() in source.lower():
@@ -421,7 +538,6 @@ class ImprovedAvitoParser:
             return None
 
 
-
 if __name__ == "__main__":
     print("Тестируем парсер с обходом защиты:")
 
@@ -445,5 +561,3 @@ if __name__ == "__main__":
             for key, value in item.items():
                 print(f"{key}: {value}")
     print(f"На парсинг одной страницы ушло {end - start}")  # Обычно 2-3 минуты
-
-
