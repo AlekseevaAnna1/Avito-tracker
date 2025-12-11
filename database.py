@@ -1,7 +1,12 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import re
+
 
 class Database:
+    # Константа часового пояса
+    MSK_TIMEZONE = timezone(timedelta(hours=3))
+
     def __init__(self, db_path="avito_tracker.db"):
         self.db_path = db_path
         self.init_database()
@@ -11,9 +16,7 @@ class Database:
         conn = sqlite3.connect(self.db_path)  # Файл создается автоматически
         cursor = conn.cursor()
 
-        '''
-        Таблицы searches (поисковые запросы) и items (найденные объявления)
-        '''
+        """Таблицы searches (поисковые запросы) и items (найденные объявления)"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS searches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,9 +26,9 @@ class Database:
                 price_min INTEGER,
                 price_max INTEGER,
                 delivery BOOLEAN DEFAULT 0,
-                fitting BOOLEAN DEFAULT 0,  # Будет реализовано в будущем
+                fitting BOOLEAN DEFAULT 0,  
                 is_active BOOLEAN DEFAULT 1,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_date TIMESTAMP,
                 last_check TIMESTAMP
             )
         ''')
@@ -37,12 +40,14 @@ class Database:
                 title TEXT NOT NULL,
                 price TEXT,
                 image_url TEXT,
-                link TEXT UNIQUE,
+                link TEXT NOT NULL,   
+                normalized_link TEXT UNIQUE,  
                 date TEXT,
                 location TEXT,
                 delivery BOOLEAN DEFAULT 0,
                 fitting BOOLEAN DEFAULT 0,
-                found_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                found_date TIMESTAMP,
                 is_new BOOLEAN DEFAULT 1,
                 FOREIGN KEY (search_id) REFERENCES searches (id) ON DELETE 
                 CASCADE
@@ -51,7 +56,27 @@ class Database:
         conn.commit()
         conn.close()
 
+    def _normalize_avito_url(self, url):
+        """
+        Извлекает базовую часть ссылки Avito до параметров.
+        Пример:
+        Вход: https://www.avito.ru/.../puhovik_nume_s_vishnyami_s_7812646131?context=...
+        Выход: https://www.avito.ru/sankt-peterburg/odezhda_obuv_aksessuary/puhovik_nume_s_vishnyami_s_7812646131
+        """
+        # Паттерн ищет ID объявления (цифры перед ? или в конце строки)
+        pattern = r'(https://www\.avito\.ru/[^?]+?_(\d+))(?:\?|$)'
 
+        match = re.search(pattern, url)
+        if match:
+            # Возвращаем всю ссылку до ID + сам ID
+            return match.group(1)
+
+        # Если не нашли паттерн, возвращаем оригинал
+        return url.split('?')[0]  # Отрезаем параметры
+
+    def _get_current_time_msk(self):
+        """Вспомогательный метод для получения текущего времени в MSK"""
+        return datetime.now(self.MSK_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
 
     def add_search(self, query, city, price_min=None, price_max=None,
                    delivery=False, fitting=False, name=None):
@@ -67,12 +92,17 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        # Создаем метку времени
+        current_time = self._get_current_time_msk()
+
         # Вставка данных в таблицу searches
         cursor.execute('''
             INSERT INTO searches 
-            (name, query, city, price_min, price_max, delivery, fitting,  last_check)
+            (name, query, city, price_min, price_max, delivery, fitting, 
+            created_date, last_check)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (name, query, city, price_min, price_max, delivery, fitting))
+        ''', (name, query, city, price_min, price_max, delivery, fitting,
+              current_time, current_time))
 
         search_id = cursor.lastrowid  # Получение id только что добав. запроса
         conn.commit()
@@ -95,37 +125,39 @@ class Database:
 
     def add_item(self, item, search_id):
         """Добавление найденного объявления (нового)
-        Возвращает true/false - новое ли объявление"""
+        Возвращает id, если объявление новое, иначе None"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        current_time = self._get_current_time_msk()
+
+        # Сокращение ссылки перед сохранением
+        normalized_link = self._normalize_avito_url(item['link'])
 
         try:
             cursor.execute('''
                 INSERT OR IGNORE INTO items 
-                (search_id, title, price, link, date, location, delivery, 
-                fitting, image_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                search_id,
-                item.get('title'),
-                item.get('price'),
-                item.get('link'),
-                item.get('date'),
-                item.get('location'),
-                item.get('delivery', False),
-                item.get('fitting', False),
-                item.get('image_url')
-            ))
-
-            # Проверяем, была ли вставлена новая запись
-            is_new = cursor.rowcount > 0
-
+                (search_id, title, price, image_url, link, normalized_link, 
+                date, 
+                location, delivery, fitting, description, found_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (search_id,
+                  item['title'],
+                  item['price'],
+                  item['image_url'],
+                  item['link'],  # Оригинальная ссылка (с параметрами)
+                  normalized_link,  # Должна быть уникальна
+                  item['date'],
+                  item['location'],
+                  item['delivery'],
+                  item['fitting'],
+                  item['description'],
+                  current_time))
             conn.commit()
-            return is_new
-
-        except sqlite3.IntegrityError:
-            # Ограничение UNIQUE (уникальное поле link)
-            return False
+            return cursor.lastrowid
+        except sqlite3.IntegrityError as e:
+            # Этот блок сработает, если будет конфликт по normalized_link
+            print(f"Объявление уже существует: {normalized_link}")
+            return None
         finally:
             conn.close()
 
@@ -154,7 +186,7 @@ class Database:
     #     return exists
 
     def get_search_by_id(self, search_id):
-        """Получение запроса по id"""
+        """Получение запроса по id в виде кортежа"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -170,11 +202,14 @@ class Database:
         (по id)"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+
+        # Создаем метку времени с учетом часового пояса MSK (UTC+3)
+        current_time = self._get_current_time_msk()
         cursor.execute('''
             UPDATE searches
-            SET last_check = CURRENT_TIMESTAMP
+            SET last_check = ?
             WHERE id = ?
-        ''', (search_id,))
+        ''', (current_time, search_id))
         conn.commit()
         conn.close()
 
@@ -209,7 +244,7 @@ class Database:
         conn.close()
 
         # Преобразование в список словарей
-        history=[]
+        history = []
         for item in items:
             history.append({
                 'title': item[0],
@@ -270,6 +305,7 @@ class Database:
             ''', (item_id,))
         conn.commit()
         conn.close()
+
 
 # Тестирование
 if __name__ == "__main__":
