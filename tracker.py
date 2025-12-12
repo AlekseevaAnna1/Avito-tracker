@@ -4,8 +4,8 @@ import notification as my_notifications
 
 
 class AvitoTracker:
-    def __init__(self, check_interval_minutes=15):
-        self.db = Database()
+    def __init__(self, db, check_interval_minutes=15):
+        self.db = db
         self.check_interval = check_interval_minutes
         self.is_running = False
 
