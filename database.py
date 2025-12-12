@@ -253,6 +253,19 @@ class Database:
         conn.commit()
         conn.close()
 
+    def delete_search(self, search_id):
+        """Удаляет запрос по его ID."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # ВКЛЮЧАЕМ поддержку внешних ключей
+        cursor.execute("PRAGMA foreign_keys = ON")
+
+        cursor.execute('DELETE FROM searches WHERE id = ?', (search_id,))
+        conn.commit()
+        conn.close()
+
+
     def get_new_items_count(self, search_id):
         """Возвращает количество непросмотренных объявлений для запроса"""
         conn = sqlite3.connect(self.db_path)

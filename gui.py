@@ -5,9 +5,9 @@ from tkinter import ttk, messagebox
 class AddSearchDialog(tk.Toplevel):
     """Диалоговое окно для добавления нового поискового запроса."""
 
-    def __init__(self, parent, tracker, on_success_callback):
+    def __init__(self, parent, db, on_success_callback):
         super().__init__(parent)
-        self.tracker = tracker
+        self.db = db
         self.on_success = on_success_callback
         self.title("Добавить новый запрос")
         self.geometry("400x350")
@@ -30,7 +30,7 @@ class AddSearchDialog(tk.Toplevel):
 
         # Поле: Город (обязательное)
         ttk.Label(main_frame, text="Город/Регион: ").grid(row=1, column=0,
-                                                         sticky=tk.W, pady=5)
+                                                          sticky=tk.W, pady=5)
         self.city_var = tk.StringVar()
         # Можно использовать Combobox с предустановленными городами Avito
         city_combo = ttk.Combobox(main_frame, textvariable=self.city_var,
@@ -91,14 +91,14 @@ class AddSearchDialog(tk.Toplevel):
 
         # Сохранение в базу данных
         try:
-            search_id = self.tracker.create_search(
+            search_id = self.db.add_search(
                 query=query,
                 city=city,
                 price_min=price_min,
                 price_max=price_max,
                 delivery=delivery
             )
-            messagebox.showinfo("Успех",
+            messagebox.showinfo("Выполнено!",
                                 f"Поисковый запрос добавлен (ID: {search_id})")
             self.on_success()  # Обновляем список в главном окне
             self.destroy()
@@ -156,21 +156,22 @@ class DetailsWindow(tk.Toplevel):
 class SearchItemsWindow(tk.Toplevel):
     """Окно для просмотра истории объявлений по конкретному запросу."""
 
-    def __init__(self, parent_app, db, search_id, search_name):
-        super().__init__(parent_app)
+    def __init__(self, parent, db, search_id, search_name, parent_app=None):
+        super().__init__(parent)  # parent - это окно Tkinter (self.root)
         self.db = db
         self.search_id = search_id
         self.title(f"История: {search_name}")
         self.geometry("900x500")
 
-        # Сохранение ссылки на родительское окно
+        # Сохранение ссылки на AvitoTrackerApp
         self.parent_app = parent_app
 
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Таблица для отображения объявлений
-        columns = ("ID", "Название", "Цена", "Дата публикации")
+        columns = ("ID", "Название", "Цена", "Примерка",
+                   "Доставка", "Дата публикации")
         self.tree = ttk.Treeview(main_frame, columns=columns, show="headings",
                                  selectmode="extended")
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -179,11 +180,15 @@ class SearchItemsWindow(tk.Toplevel):
         self.tree.heading("ID", text="ID")
         self.tree.heading("Название", text="Название")
         self.tree.heading("Цена", text="Цена")
+        self.tree.heading("Примерка", text="Примерка")
+        self.tree.heading("Доставка", text="Доставка")
         self.tree.heading("Дата публикации", text="Дата публикации")
 
-        self.tree.column("ID", width=40)
+        self.tree.column("ID", width=20)
         self.tree.column("Название", width=300)
-        self.tree.column("Цена", width=100)
+        self.tree.column("Цена", width=40)
+        self.tree.column("Примерка", width=40)
+        self.tree.column("Доставка", width=40)
         self.tree.column("Дата публикации", width=120)
 
         # Настраиваем стиль для новых объявлений
@@ -232,8 +237,8 @@ class SearchItemsWindow(tk.Toplevel):
             price = item[3]
             link = item[5]
             date = item[7]
-            delivery = item[9]
-            fitting = item[10]
+            delivery = "ДА" if item[9] == 1 else "НЕТ"
+            fitting = "ДА" if item[10] == 1 else "НЕТ"
             is_new = item[13]
 
             # Определяем тег в зависимости от статуса + ссылка
@@ -242,8 +247,8 @@ class SearchItemsWindow(tk.Toplevel):
             # Добавление строки в таблицу
             self.tree.insert("", tk.END,
                              values=(
-                                 item_id, title, price, date,
-                                 fitting, delivery),
+                                 item_id, title, price, fitting, delivery, date
+                             ),
                              tags=tags)
 
         # Пометка всех загруженных объявлений is_new = 0
@@ -334,11 +339,19 @@ class AvitoTrackerApp:
         ttk.Button(toolbar, text="+ Добавить запрос",
                    command=self._open_add_dialog).pack(side=tk.LEFT)
 
+        ttk.Button(toolbar, text="🗑️ Удалить запрос",
+                   command=self._delete_search).pack(side=tk.LEFT,
+                                                     padx=5)
+
         # Кнопки управления фоновой проверкой
         ttk.Button(toolbar, text="▶️ Запустить проверку",
                    command=self.scheduler.start).pack(side=tk.RIGHT, padx=5)
         ttk.Button(toolbar, text="⏸️ Остановить проверку",
                    command=self.scheduler.stop).pack(side=tk.RIGHT)
+
+        # Метка с интервалом проверки
+        interval_text = f"Проверка каждые: {scheduler.interval} мин"
+        ttk.Label(toolbar, text=interval_text).pack(side=tk.RIGHT, padx=10)
 
         # Основная область: список активных запросов
         main_frame = ttk.Frame(self.root, padding="10")
@@ -476,7 +489,7 @@ class AvitoTrackerApp:
 
     def _open_add_dialog(self):
         """Открывает диалог добавления нового запроса."""
-        AddSearchDialog(self.root, self.tracker, self._load_searches)
+        AddSearchDialog(self.root, self.db, self._load_searches)
 
     def _open_search_history(self, event):
         """Открывает окно истории для выбранного поискового запроса."""
@@ -485,4 +498,33 @@ class AvitoTrackerApp:
             return
         search_data = self.tree.item(selected_item[0])['values']
         search_id, search_name = search_data[0], search_data[1]
-        SearchItemsWindow(self.root, self.db, search_id, search_name)
+        SearchItemsWindow(self.root, self.db, search_id, search_name,
+                          parent_app=self)
+
+    def _delete_search(self):
+        """Удаляет выбранный поисковый запрос из БД."""
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Внимание", "Выберите запрос для удаления.")
+            return
+
+        # Получаем данные выбранной строки
+        values = self.tree.item(selected[0])['values']
+        search_id, search_name = values[0], values[1]
+
+        # Подтверждение
+        confirm = messagebox.askyesno(
+            "Подтверждение удаления",
+            f"Удалить запрос '{search_name}'?\nВсе связанные объявления также будут удалены."
+        )
+
+        if not confirm:
+            return
+
+        # Удаление из БД
+        try:
+            self.db.delete_search(search_id)  # Этот метод нужно добавить
+            self._load_searches()  # Обновляем список
+            messagebox.showinfo("Выполнено!", "Запрос удален.")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось удалить запрос: {e}")

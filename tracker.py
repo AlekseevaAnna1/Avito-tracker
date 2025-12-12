@@ -44,7 +44,7 @@ class AvitoTracker:
         # Обновление времени проверки
         self.db.update_last_check(search_id)
 
-        print(f"Найдено {len(items)} объявлений, новых: {len(new_items)}")
+        print(f"Найдено {len(items)} объявлений")
         return search_id, len(new_items)
 
     def check_search(self, search_id):
@@ -119,23 +119,24 @@ if __name__ == "__main__":
     #     query="Джинсы levis женские",
     #     city="sankt-peterburg",
     #     price_min=1000,
-    #     price_max=7000
+    #     price_max=7000,
     # )
     #
-    # search_id3, _ = tracker.create_search(
-    #     query="Сапоги кожаные черные",
-    #     city="sankt-peterburg", price_min=100, price_max=5000,
-    # )
+    search_id3, _ = tracker.create_search(
+        query="Сапоги замшевые коричневые",
+        city="moskva", price_max=9000,
+        delivery=True
+    )
 
-    print("\n--- Все активные запросы из БД ---")
-    active_searches = tracker.db.get_active_searches()
-
-    for search in active_searches:
-        id = search[0]
-        name = search[1]
-        print(f"ID запроса: {id} | название: {name}")
-
-    print("\n--- Проверка всех активных запросов ---")
-    all_new_items = tracker.check_all_active_searches()
-    # new_items = tracker.check_search(search_id5)
-    print(f"Всего новых объявлений по всем запросам: {len(all_new_items)}")
+    # print("\n--- Все активные запросы из БД ---")
+    # active_searches = tracker.db.get_active_searches()
+    #
+    # for search in active_searches:
+    #     id = search[0]
+    #     name = search[1]
+    #     print(f"ID запроса: {id} | название: {name}")
+    # #
+    # print("\n--- Проверка всех активных запросов ---")
+    # all_new_items = tracker.check_all_active_searches()
+    # # new_items = tracker.check_search(search_id5)
+    # print(f"Всего новых объявлений по всем запросам: {len(all_new_items)}")
