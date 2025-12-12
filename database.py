@@ -7,7 +7,7 @@ class Database:
     # Константа часового пояса
     MSK_TIMEZONE = timezone(timedelta(hours=3))
 
-    def __init__(self, db_path="avito_tracker.db"):
+    def __init__(self, db_path="avito_tracker_test.db"):
         self.db_path = db_path
         self.init_database()
 
@@ -196,6 +196,88 @@ class Database:
         conn.close()
         return search
 
+    def get_item_by_id(self, item_id):
+        """Получение объявления по id в виде кортежа"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM items WHERE id = ?', (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        return item
+
+    def get_active_searches(self):
+        """Получает список всех активных поисковых запросов."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT s.*, COUNT(i.id) as items_count
+            FROM searches s
+            LEFT JOIN items i ON s.id = i.search_id
+            GROUP BY s.id
+            ORDER BY s.last_check DESC
+        ''')
+        searches = cursor.fetchall()
+        conn.close()
+        return searches
+
+    def get_items_by_search_id(self, search_id):
+        """Получает все объявления для указанного поискового запроса."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM items 
+            WHERE search_id = ? 
+            ORDER BY found_date DESC
+        ''', (search_id,))
+        items = cursor.fetchall()
+        conn.close()
+        return items
+
+    def mark_items_as_viewed(self, search_id):
+        """Помечает все объявления в поисковом запросе как просмотренные."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE items 
+            SET is_new = 0 
+            WHERE search_id = ? AND is_new = 1
+        ''', (search_id,))
+        conn.commit()
+        conn.close()
+
+    def delete_item(self, item_id):
+        """Удаляет объявление по его ID."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM items WHERE id = ?', (item_id,))
+        conn.commit()
+        conn.close()
+
+    def get_new_items_count(self, search_id):
+        """Возвращает количество непросмотренных объявлений для запроса"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM items 
+            WHERE search_id = ? AND is_new = 1
+        ''', (search_id,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
+
+    def get_total_count(self, search_id):
+        """Возвращает количество всех объявлений для запроса"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM items 
+            WHERE search_id = ?
+        ''', (search_id,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
     def update_last_check(self, search_id):
         """Время последней проверки (устанавливается текущее) конкретного
         запроса
@@ -294,7 +376,7 @@ class Database:
             'last_check': last_check
         }
 
-    def mark_item_as_seen(self, item_id):
+    def mark_item_as_viewed(self, item_id):
         """Помечает объявление как просмотренное (не новое)"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
