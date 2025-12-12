@@ -13,7 +13,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.action_chains import \
     ActionChains  # Цепочки действий
 import undetected_chromedriver as uc
-from webdriver_manager.chrome import ChromeDriverManager
+import re
 
 
 class ImprovedAvitoParser:
@@ -364,8 +364,10 @@ class ImprovedAvitoParser:
             print(f"Ошибка: {e}")
         finally:
             if self.driver:
-                self.driver.quit()
-                # print("Браузер закрыт")
+                try:
+                    self.driver.quit()
+                except Exception:
+                    pass  # Игнорируем любые ошибки при закрытии
 
         print(f"Найдено: {len(all_items)} объявлений")
         return all_items
@@ -385,7 +387,7 @@ class ImprovedAvitoParser:
             print(f"Найдено контейнеров: {len(containers)}")
 
             items = []
-            for container in containers[:20]:  # Ограничиваем для скорости
+            for container in containers:  # Ограничиваем для скорости
                 item_data = self._extract_data_from_container(container)
                 if item_data:
                     items.append(item_data)
@@ -406,7 +408,7 @@ class ImprovedAvitoParser:
             source = self.driver.page_source
             items = []
             # Сохраняем HTML для отладки
-            with open("avito_debug.html", "w", encoding="utf-8") as f:
+            with open("test_files/avito_debug.html", "w", encoding="utf-8") as f:
                 f.write(source)
             print("HTML сохранен как avito_debug.html")
 
@@ -419,18 +421,107 @@ class ImprovedAvitoParser:
             print(f"Ошибка аварийного парсинга: {e}")
             return []
 
+
+    def _get_word_variations(self, word):
+        """
+        Генерирует базовые вариации слова для учета склонений.
+        """
+        # Базовые окончания для существительных
+        endings = {
+            'и': ['и', 'ов', 'ам', 'ами', 'ах'],  # сапоги
+            'а': ['а', 'ы', 'е', 'у', 'ой', 'ам'],  # куртка
+            'я': ['я', 'и', 'е', 'ю', 'ей', 'ям'],  # юбка
+            'о': ['о', 'а', 'у', 'ом', 'е'],  # пальто
+            'е': ['е', 'я', 'ю', 'ем', 'и'],  # платье
+        }
+
+        variations = [word]
+
+        # Определение окончаний
+        last_char = word[-1]
+        if last_char in endings:
+            base = word[:-1]
+            for ending in endings[last_char]:
+                variations.append(base + ending)
+
+        # Добавление усеченных форм
+        if len(word) > 4:
+            variations.append(word[:-1])
+            variations.append(word[:-2])
+
+        return list(set(variations))
+
+    def _is_relevant_by_first_word(self, query, title, description):
+        """
+        Проверяет, что первое слово запроса (в любой форме) есть в заголовке или описании.
+        Учитывает базовые склонения русского языка.
+        """
+        if not query or not title:
+            return False
+
+        # Первое слово запроса - в качестве основного
+        first_word = query.lower().split()[0]
+        if len(first_word) <= 3:
+            return True
+
+        # Базовые формы слова
+        word_forms = self._get_word_variations(first_word)
+
+        # Проверка в заголовке
+        title_lower = title.lower()
+        if any(form in title_lower for form in word_forms):
+            return True
+
+        # Проверка в описании товара
+        if description:
+            desc_lower = description.lower()
+            if any(form in desc_lower for form in word_forms):
+                return True
+
+        return False
+
     # Возвращает словарь
     def _extract_data_from_container(self, container):
         # Извлечение данных из  объявления
         try:
-            title = "No title"
+            # --- НАЧАЛО ОТЛАДКИ ---
+            # Выводим отладку только для первых 3 контейнеров, чтобы не засорять консоль
+            # import time
+            # current_time_ms = int(
+            #     time.time() * 1000) % 10000  # Уникальный ID
+            #
+            # # Проверяем, не выводили ли мы уже отладку для этого запуска
+            # if not hasattr(self, '_debug_counter'):
+            #     self._debug_counter = 0
+            #
+            # if self._debug_counter < 3:  # Только первые 3 контейнера
+            #     self._debug_counter += 1
+            #     container_text = container.text
+            #     print(
+            #         f"\n[DEBUG #{self._debug_counter}] Текст контейнера (первые 300 символов): {container_text[:300]}")
+            #     print(
+            #         f"[DEBUG] Найдено 'Можно примерить': {'Да' if 'Можно примерить' in container_text else 'Нет'}")
+            #     print(
+            #         f"[DEBUG] Найдено 'Доставка': {'Да' if 'Доставка' in container_text else 'Нет'}")
+            #
+            #     # Сохраняем HTML только если не нашли нужных фраз
+            #     if 'Можно примерить' not in container_text or 'Доставка' not in container_text:
+            #         with open(f"debug_container_{current_time_ms}.html",
+            #                   "w", encoding="utf-8") as f:
+            #             f.write(container.get_attribute('outerHTML'))
+            #         print(
+            #             f"[DEBUG] HTML сохранен в debug_container_{current_time_ms}.html")
+            #
+
+            title = None
             link = "No link"
             price = "Не указана"
             location = "Не указано"
             date = "Не указано"
-            image_url = "No image"
+            image_url = None
             delivery = False
             fitting = False
+            description = None
 
             # Название и ссылка
             main_elem = container.find_element(By.CSS_SELECTOR,
@@ -438,6 +529,67 @@ class ImprovedAvitoParser:
             if main_elem:
                 title = main_elem.text.strip()
                 link = main_elem.get_attribute('href')
+
+            # Описание
+            try:
+                description = ""
+                desc_selectors = [
+                    'meta[itemprop="description"]',
+                    '[data-marker="item-description"]',
+                    '.item-description',
+                    '[class*="description"]'
+                ]
+
+                for selector in desc_selectors:
+                    try:
+                        desc_elem = container.find_element(By.CSS_SELECTOR,
+                                                           selector)
+                        if 'meta' in selector:
+                            description = desc_elem.get_attribute(
+                                'content') or ""
+                        else:
+                            description = desc_elem.text
+
+                        if description:
+                            break
+
+                    except Exception:
+                        continue  # Проверка следующего селектора
+            except Exception as e:
+                print(f"Ошибка извлечения описания: {e}")
+
+            # Первое фото
+            try:
+                img_selectors = [
+                    'img[data-marker="item-image"]',
+                    'img[itemprop="image"]',
+                    'img[class*="image"]',
+                    'source[type="image/jpeg"]'
+                ]
+
+                for selector in img_selectors:
+                    try:
+                        img_elem = container.find_element(By.CSS_SELECTOR,
+                                                          selector)
+                        temp_url = img_elem.get_attribute(
+                            'src') or img_elem.get_attribute('data-src')
+                        if temp_url and temp_url != "No image":
+                            # Очищаем URL от мусора
+                            if ';' in temp_url:
+                                temp_url = temp_url.split(';')[0]
+                            image_url = temp_url
+                            break
+                    except:
+                        continue
+            except Exception as e:
+                print(f"Ошибка извлечения изображения: {e}")
+
+            # # Если нет заголовка или не релевантен
+            # if not title or not image_url or not \
+            #         self._is_relevant_by_first_word(self.query,
+            #                                                     title, description):
+            if not title or not image_url:
+                return None  # Прекращаем обработку этого контейнера
 
             # Цена
             try:
@@ -478,49 +630,57 @@ class ImprovedAvitoParser:
             except NoSuchElementException:
                 pass
 
-            # Первое фото
-            try:
-                img_selectors = [
-                    'img[data-marker="item-image"]',
-                    'img[itemprop="image"]',
-                    'img[class*="image"]',
-                    'source[type="image/jpeg"]'
-                ]
-
-                for selector in img_selectors:
-                    try:
-                        img_elem = container.find_element(By.CSS_SELECTOR,
-                                                          selector)
-                        temp_url = img_elem.get_attribute(
-                            'src') or img_elem.get_attribute('data-src')
-                        if temp_url and temp_url != "No image":
-                            # Очищаем URL от мусора
-                            if ';' in temp_url:
-                                temp_url = temp_url.split(';')[0]
-                            image_url = temp_url
-                            break
-                    except:
-                        continue
-            except Exception as e:
-                print(f"Ошибка извлечения изображения: {e}")
-
             # Примерка и доставка
-            try:
-                location_selectors = [
-                    '[class*="iva-item-listMiddleBlock-W7qtU"]',
-                ]
+            # try:
+            #     location_selectors = [
+            #         '[class*="iva-item-listMiddleBlock-W7qtU"]',
+            #     ]
+            #
+            #     for selector in location_selectors:
+            #         try:
+            #             extra_elem = container.find_element(
+            #                 By.CSS_SELECTOR,
+            #                 selector)
+            #             if "Доставка" in extra_elem.text:
+            #                 delivery = True
+            #             if "Можно примерить" in extra_elem.text:
+            #                 fitting = True
+            #         except:
+            #             continue
 
-                for selector in location_selectors:
+            try:
+                # Проверка всего текста контейнера
+                container_text = container.text
+
+                if "Можно примерить" in container_text:
+                    fitting = True
+
+                if "Доставка" in container_text:
+                    delivery = True
+
+
+                if not fitting:
                     try:
-                        extra_elem = container.find_element(
+                        fitting_badge = container.find_element(
                             By.CSS_SELECTOR,
-                            selector)
-                        if "Доставка" in extra_elem.text:
-                            delivery = True
-                        if "Можно примерить" in extra_elem.text:
+                            '[data-marker*="iva-item/"]'
+                        )
+                        if "Можно примерить" in fitting_badge.text:
                             fitting = True
                     except:
-                        continue
+                        pass
+
+                if not delivery:
+                    try:
+                        # Поиск по частичному совпадению класса доставки
+                        delivery_block = container.find_element(
+                            By.CSS_SELECTOR,
+                            '[class*="delivery-root"]'
+                        )
+                        if "Доставка" in delivery_block.text:
+                            delivery = True
+                    except:
+                        pass
             except Exception as e:
                 print(f"Ошибка извлечения доп. параметров: {e}")
             return {
@@ -532,10 +692,12 @@ class ImprovedAvitoParser:
                 'delivery': delivery,
                 'fitting': fitting,
                 'image_url': image_url,
+                'description': description if description else ""
             }
         except Exception as e:
             print(f"Ошибка извлечения данных: {e}")
             return None
+
 
 
 if __name__ == "__main__":
@@ -552,7 +714,6 @@ if __name__ == "__main__":
     start = time.time()
 
     items = parser.main_parse_func(max_pages=1, headless=False)
-
     end = time.time()
 
     if items:
